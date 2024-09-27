@@ -3,6 +3,7 @@ import struct
 import pprint as pp
 from glob import glob
 from elist import eList
+from copy import copy,deepcopy
 import json
 
 Version = 0
@@ -123,7 +124,7 @@ def Load(el_file):
             len_st = len(Li)
             # Read the element file
             for l in range(len_st):
-                print(f"Process {l} of {len_st}")
+                print(f"Processing category {l} of {len_st}")
                 SStat[0] = l
                 # Read offset
                 if Li[l].list_offset is not None:
@@ -150,61 +151,57 @@ def Load(el_file):
                         Li[l].listOffset = tag + length.to_bytes(4, byteorder='little') + buffer
                 # Read conversation list
                 if l == ConversationListIndex:
-                    if Version >= 191:
-                        sourcePosition = fs.tell()
-                        endPosition = fs.seek(0, 2)
-                        listLength = endPosition - sourcePosition
-                        fs.seek(sourcePosition)
-                        Li[l].element_types[0] = f"byte:{listLength}"
-                        print("CL length:", listLength)
-                    else:
-                        # Auto detect only works for specific files
-                        if "AUTO" in Li[l].element_types[0]:
-                            pattern = "facedata\\".encode("GBK")
-                            sourcePosition = fs.tell()
-                            listLength = -72 - len(pattern)
-                            run = True
-                            while run:
-                                run = False
-                                for i in range(len(pattern)):
-                                    listLength += 1
-                                    if br.read(1) != pattern[i:i+1]:
-                                        run = True
-                                        break
-                            fs.seek(sourcePosition)
-                            Li[l].element_types[0] = f"byte:{listLength}"
-                    Li[l].element_values = [[None] * len(Li[l].element_types)]
-                    Li[l].element_values[0][0] = read_value(br, Li[l].element_types[0])
+                    pass
+                    # if Version >= 191:
+                    #     sourcePosition = fs.tell()
+                    #     endPosition = fs.seek(0, 2)
+                    #     listLength = endPosition - sourcePosition
+                    #     fs.seek(sourcePosition)
+                    #     Li[l].element_types[0] = f"byte:{listLength}"
+                    #     print("CL length:", listLength)
+                    # else:
+                    #     # Auto detect only works for specific files
+                    #     if "AUTO" in Li[l].element_types[0]:
+                    #         pattern = "facedata\\".encode("GBK")
+                    #         sourcePosition = fs.tell()
+                    #         listLength = -72 - len(pattern)
+                    #         run = True
+                    #         while run:
+                    #             run = False
+                    #             for i in range(len(pattern)):
+                    #                 listLength += 1
+                    #                 if br.read(1) != pattern[i:i+1]:
+                    #                     run = True
+                    #                     break
+                    #         fs.seek(sourcePosition)
+                    #         Li[l].element_types[0] = f"byte:{listLength}"
+                    # Li[l].element_values = [[None] * len(Li[l].element_types)]
+                    # Li[l].element_values[0][0] = read_value(br, Li[l].element_types[0])
                 else:
+                    num_entries = 0
+                    num_fields  = len(Li[l].element_types)
                     if Version >= 191:
                         Li[l].list_type = struct.unpack('i', br.read(4))[0]
                     if Listver > -1 and str(l) in Listcnts:
-                        num = int(Listcnts[str(l)])
-                        Li[l].element_values = [[None] * len(Li[l].element_types)] * num
+                        num_entries = int(Listcnts[str(l)])
+                        Li[l].element_values = []#[[None] * len(Li[l].element_types)] * num_entries
                         br.read(4)
                     else:
-                        num_elements = struct.unpack('i', br.read(4))[0]
-                        Li[l].element_values = [[None] * len(Li[l].element_types)] * num_elements
+                        num_entries = struct.unpack('i', br.read(4))[0]
+                        Li[l].element_values = []#[[None] * len(Li[l].element_types)] * num_elements
                     SStat[1] = len(Li[l].element_values)
                     if Version >= 191:
                         Li[l].element_size = struct.unpack('i', br.read(4))[0]
                     # Iterate through list elements
-                    len_le = len(Li[l].element_values)
+                    len_le = num_entries
+                    print("Entries:", len_le)
                     for e in range(len_le):
-                        len_lef = len(Li[l].element_values[e])
-                        print(f"Process category {e} of {len_le}, entries: {len_lef}")
+                        len_lef = num_fields
+                        ar = []
                         for f in range(len_lef):
-                            Li[l].element_values[e][f] = read_value(br, Li[l].element_types[f])
-                            # Handle "ID" field
-                            if Li[l].element_fields[f] == "ID":
-                                idtest = int(Li[l].element_values[e][f])
-                                SStat[2] = idtest
-                                if l == 0:
-                                    if idtest not in addonIndex:
-                                        addonIndex[idtest] = e
-                                    else:
-                                        print(f"Error: Found duplicate Addon id: {idtest}")
-                                        addonIndex[idtest] = e
+                            val = read_value(br, Li[l].element_types[f])
+                            ar.append(val)
+                        Li[l].element_values.append(ar)
         else:
             print(f"No corresponding configuration file found!\nVersion: {Version}\nPattern: configs/PW_*_v{Version}.cfg")
     return Li
@@ -212,5 +209,12 @@ def Load(el_file):
 if __name__ == '__main__':
     data = Load('elements.data')
     for elist in data:
-        with open(f"{elist.list_name}.json", 'w') as fp:
-            json.dump(elist.to_dict(), fp, indent=2)
+        ddata = elist.to_dict()
+        with open(f"__out__/{elist.list_name}.json", 'w') as fp:
+            json.dump(ddata, fp, indent=2)
+        with open(f"__out__/{elist.list_name}.csv", 'w') as fp:
+            fp.write(','.join(elist.element_fields) + '\n')
+            for line in ddata['element_values']:
+                if '' not in line:
+                    line[''] = None
+                fp.write(','.join([f"{line[k]}" for k in elist.element_fields]) + '\n')

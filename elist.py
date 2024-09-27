@@ -87,19 +87,13 @@ class eList:
             'element_fields': self.element_fields,
             'element_values': [],
         }
-        ENCODINGS = ['utf16', 'GBK', 'utf8','GB2312']
         for dat in self.element_values:
             obj = {}
             for i,f in enumerate(dat):
-                if 'string' in self.element_types[i]:
-                    for enc in ENCODINGS:
-                        ss = f
-                        try:
-                            ss = f.decode(enc).rstrip('\x00')
-                            break
-                        except Exception:
-                            pass
-                    obj[self.element_fields[i]] = ss
+                if 'wstring' in self.element_types[i]:
+                    obj[self.element_fields[i]] = f.decode('utf16').rstrip('\x00')
+                elif 'string' in self.element_types[i]:
+                    obj[self.element_fields[i]] = f.decode('GBK').rstrip('\x00')
                 else:
                     obj[self.element_fields[i]] = f
             ret['element_values'].append(obj)
