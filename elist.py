@@ -78,52 +78,29 @@ class eList:
                     value = field.split("=")[1].strip('"')
                     self.set_value(index, i, value)
 
-    def join_elements(self, new_list: 'eList', list_id: int, add_new: bool, backup_new: bool, replace_changed: bool,
-                        backup_changed: bool, remove_missing: bool, backup_missing: bool, dir_backup_new: str,
-                        dir_backup_changed: str, dir_backup_missing: str):
-        report = []
-        new_element_values = new_list.element_values
-
-        # Check for missing items
-        for n, element in enumerate(self.element_values):
-            exists = any(self.get_value(n, 0) == new_list.get_value(e, 0) for e in range(len(new_element_values)))
-            if not exists:
-                if dir_backup_missing and os.path.exists(dir_backup_missing):
-                    self.export_item(os.path.join(dir_backup_missing, f"List_{list_id}_Item_{self.get_value(n, 0)}.txt"), n)
-                if remove_missing:
-                    report.append(f"- MISSING ITEM (*removed): {self.get_value(n, 0)}")
-                    self.remove_item(n)
+    def to_dict(self):
+        ret = {
+            'list_name': self.list_name,
+            'list_type': self.list_type,
+            'list_size': self.element_size,
+            'element_types': self.element_types,
+            'element_fields': self.element_fields,
+            'element_values': [],
+        }
+        ENCODINGS = ['utf16', 'GBK', 'utf8','GB2312']
+        for dat in self.element_values:
+            obj = {}
+            for i,f in enumerate(dat):
+                if 'string' in self.element_types[i]:
+                    for enc in ENCODINGS:
+                        ss = f
+                        try:
+                            ss = f.decode(enc).rstrip('\x00')
+                            break
+                        except Exception:
+                            pass
+                    obj[self.element_fields[i]] = ss
                 else:
-                    report.append(f"- MISSING ITEM (*not removed): {self.get_value(n, 0)}")
-
-        # Check for new or changed items
-        for e, new_element in enumerate(new_element_values):
-            exists = False
-            for n, element in enumerate(self.element_values):
-                if self.get_value(n, 0) == new_list.get_value(e, 0):
-                    exists = True
-                    if len(self.element_values[n]) != len(new_list.element_values[e]):
-                        report.append(f"<> DIFFERENT ITEM (*not replaced, invalid amount of values): {self.get_value(n, 0)}")
-                    else:
-                        for i in range(len(self.element_values[n])):
-                            if self.get_value(n, i) != new_list.get_value(e, i):
-                                if backup_changed and os.path.exists(dir_backup_changed):
-                                    self.export_item(os.path.join(dir_backup_changed, f"List_{list_id}_Item_{self.get_value(n, 0)}.txt"), n)
-                                if replace_changed:
-                                    self.element_values[n] = new_list.element_values[e]
-                                    report.append(f"<> DIFFERENT ITEM (*replaced): {self.get_value(n, 0)}")
-                                else:
-                                    report.append(f"<> DIFFERENT ITEM (*not replaced): {self.get_value(n, 0)}")
-                                break
-                    break
-
-            if not exists:
-                if backup_new and os.path.exists(dir_backup_new):
-                    new_list.export_item(os.path.join(dir_backup_new, f"List_{list_id}_Item_{new_list.get_value(e, 0)}.txt"), e)
-                if add_new:
-                    self.add_item(new_element)
-                    report.append(f"+ NEW ITEM (*added): {self.get_value(-1, 0)}")
-                else:
-                    report.append(f"+ NEW ITEM (*not added): {self.get_value(-1, 0)}")
-
-        return report
+                    obj[self.element_fields[i]] = f
+            ret['element_values'].append(obj)
+        return ret

@@ -2,3 +2,4 @@
 __**
 *.data
 !.gitignore
+out/

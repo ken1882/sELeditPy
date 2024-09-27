@@ -3,6 +3,7 @@ import struct
 import pprint as pp
 from glob import glob
 from elist import eList
+import json
 
 Version = 0
 Signature = None
@@ -24,36 +25,39 @@ def load_configuration(file):
             line = sr.readline().strip()
             while line == "":
                 line = sr.readline().strip()
-            Li[i].listName = line
-            Li[i].listOffset = None
+            Li[i].list_name = line
+            Li[i].list_offset = None
             offset = sr.readline().strip()
             if offset != "AUTO":
                 Li[i].listOffset = [None] * int(offset)
-            Li[i].elementFields = sr.readline().strip().split(';')
-            Li[i].elementTypes = sr.readline().strip().split(';')
+            Li[i].element_fields = sr.readline().strip().split(';')
+            Li[i].element_types = sr.readline().strip().split(';')
     return Li
 
 
 def read_value(br, value_type: str):
-    if value_type == "int16":
-        return struct.unpack('<h', br.read(2))[0]  # '<h' is little-endian int16
-    if value_type == "int32":
-        return struct.unpack('<i', br.read(4))[0]  # '<i' is little-endian int32
-    if value_type == "int64":
-        return struct.unpack('<q', br.read(8))[0]  # '<q' is little-endian int64
-    if value_type == "float":
-        return struct.unpack('<f', br.read(4))[0]  # '<f' is little-endian float
-    if value_type == "double":
-        return struct.unpack('<d', br.read(8))[0]  # '<d' is little-endian double
-    if "byte:" in value_type:
-        size = int(value_type.split(":")[1])
-        return br.read(size)
-    if "wstring:" in value_type:
-        size = int(value_type.split(":")[1])
-        return br.read(size)
-    if "string:" in value_type:
-        size = int(value_type.split(":")[1])
-        return br.read(size)
+    try:
+        if value_type == "int16":
+            return struct.unpack('<h', br.read(2))[0]  # '<h' is little-endian int16
+        if value_type == "int32":
+            return struct.unpack('<i', br.read(4))[0]  # '<i' is little-endian int32
+        if value_type == "int64":
+            return struct.unpack('<q', br.read(8))[0]  # '<q' is little-endian int64
+        if value_type == "float":
+            return struct.unpack('<f', br.read(4))[0]  # '<f' is little-endian float
+        if value_type == "double":
+            return struct.unpack('<d', br.read(8))[0]  # '<d' is little-endian double
+        if "byte:" in value_type:
+            size = int(value_type.split(":")[1])
+            return br.read(size)
+        if "wstring:" in value_type:
+            size = int(value_type.split(":")[1])
+            return br.read(size)
+        if "string:" in value_type:
+            size = int(value_type.split(":")[1])
+            return br.read(size)
+    except Exception as err:
+        print("Error: ", err)
     return None
 
 def write_value(bw, value, value_type: str):
@@ -115,20 +119,23 @@ def Load(el_file):
         if configFiles:
             ConfigFile = configFiles[0]
             Li = load_configuration(ConfigFile)
+            print('CL index:', ConversationListIndex)
+            len_st = len(Li)
             # Read the element file
-            for l in range(len(Li)):
+            for l in range(len_st):
+                print(f"Process {l} of {len_st}")
                 SStat[0] = l
                 # Read offset
-                if Li[l].listOffset is not None:
-                    if len(Li[l].listOffset) > 0:
-                        Li[l].listOffset = br.read(len(Li[l].listOffset))
+                if Li[l].list_offset is not None:
+                    if len(Li[l].list_offset) > 0:
+                        Li[l].list_offset = br.read(len(Li[l].list_offset))
                 else:
                     # Auto-detect offset (for list 20 & 100)
                     if l == 0:
                         t = br.read(4)
                         length = struct.unpack('i', br.read(4))[0]
                         buffer = br.read(length)
-                        Li[l].listOffset = t + length.to_bytes(4, byteorder='little') + buffer
+                        Li[l].list_offset = t + length.to_bytes(4, byteorder='little') + buffer
                     elif l == 20:
                         tag = br.read(4)
                         length = struct.unpack('i', br.read(4))[0]
@@ -145,19 +152,14 @@ def Load(el_file):
                 if l == ConversationListIndex:
                     if Version >= 191:
                         sourcePosition = fs.tell()
-                        listLength = 0
-                        run = True
-                        while run:
-                            try:
-                                br.read(1)
-                                listLength += 1
-                            except:
-                                run = False
+                        endPosition = fs.seek(0, 2)
+                        listLength = endPosition - sourcePosition
                         fs.seek(sourcePosition)
-                        Li[l].elementTypes[0] = f"byte:{listLength}"
+                        Li[l].element_types[0] = f"byte:{listLength}"
+                        print("CL length:", listLength)
                     else:
                         # Auto detect only works for specific files
-                        if "AUTO" in Li[l].elementTypes[0]:
+                        if "AUTO" in Li[l].element_types[0]:
                             pattern = "facedata\\".encode("GBK")
                             sourcePosition = fs.tell()
                             listLength = -72 - len(pattern)
@@ -170,29 +172,32 @@ def Load(el_file):
                                         run = True
                                         break
                             fs.seek(sourcePosition)
-                            Li[l].elementTypes[0] = f"byte:{listLength}"
-                    Li[l].elementValues = [[None] * len(Li[l].elementTypes)]
-                    Li[l].elementValues[0][0] = read_value(br, Li[l].elementTypes[0])
+                            Li[l].element_types[0] = f"byte:{listLength}"
+                    Li[l].element_values = [[None] * len(Li[l].element_types)]
+                    Li[l].element_values[0][0] = read_value(br, Li[l].element_types[0])
                 else:
                     if Version >= 191:
-                        Li[l].listType = struct.unpack('i', br.read(4))[0]
+                        Li[l].list_type = struct.unpack('i', br.read(4))[0]
                     if Listver > -1 and str(l) in Listcnts:
                         num = int(Listcnts[str(l)])
-                        Li[l].elementValues = [[None] * len(Li[l].elementTypes)] * num
+                        Li[l].element_values = [[None] * len(Li[l].element_types)] * num
                         br.read(4)
                     else:
                         num_elements = struct.unpack('i', br.read(4))[0]
-                        Li[l].elementValues = [[None] * len(Li[l].elementTypes)] * num_elements
-                    SStat[1] = len(Li[l].elementValues)
+                        Li[l].element_values = [[None] * len(Li[l].element_types)] * num_elements
+                    SStat[1] = len(Li[l].element_values)
                     if Version >= 191:
-                        Li[l].elementSize = struct.unpack('i', br.read(4))[0]
+                        Li[l].element_size = struct.unpack('i', br.read(4))[0]
                     # Iterate through list elements
-                    for e in range(len(Li[l].elementValues)):
-                        for f in range(len(Li[l].elementValues[e])):
-                            Li[l].elementValues[e][f] = read_value(br, Li[l].elementTypes[f])
+                    len_le = len(Li[l].element_values)
+                    for e in range(len_le):
+                        len_lef = len(Li[l].element_values[e])
+                        print(f"Process category {e} of {len_le}, entries: {len_lef}")
+                        for f in range(len_lef):
+                            Li[l].element_values[e][f] = read_value(br, Li[l].element_types[f])
                             # Handle "ID" field
-                            if Li[l].elementFields[f] == "ID":
-                                idtest = int(Li[l].elementValues[e][f])
+                            if Li[l].element_fields[f] == "ID":
+                                idtest = int(Li[l].element_values[e][f])
                                 SStat[2] = idtest
                                 if l == 0:
                                     if idtest not in addonIndex:
@@ -206,5 +211,6 @@ def Load(el_file):
 
 if __name__ == '__main__':
     data = Load('elements.data')
-    with open('data.txt', 'w') as fp:
-        fp.write(pp.pformat(data, indent=2))
+    for elist in data:
+        with open(f"{elist.list_name}.json", 'w') as fp:
+            json.dump(elist.to_dict(), fp, indent=2)
